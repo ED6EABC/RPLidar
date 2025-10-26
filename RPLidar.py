@@ -160,7 +160,12 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
 
     # Añadir etiqueta con resolución de pantalla en la esquina superior izquierda del figure
     if screen_w and screen_h:
-        fig.text(0.01, 0.99, f"Screen: {screen_w} x {screen_h} px",
+        # calcular cuántos paneles (en X/Y) serían necesarios para cubrir la resolución de pantalla,
+        # usando panel_pixels (píxeles por panel)
+        panels_needed_x = int(math.ceil(screen_w / panel_pixels))
+        panels_needed_y = int(math.ceil(screen_h / panel_pixels))
+        fig.text(0.01, 0.99,
+                 f"Screen: {screen_w} x {screen_h} px — Panels needed: {panels_needed_x} x {panels_needed_y}",
                  ha='left', va='top', fontsize=9, color='black', zorder=30)
 
     plt.show(block=False)
