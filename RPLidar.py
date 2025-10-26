@@ -20,6 +20,7 @@ from rplidar import RPLidar, RPLidarException
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.patches import Circle
+import ctypes
 
 PORT = 'COM3'
 BAUD = 256000
@@ -120,6 +121,14 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     plt.ion()
     fig, ax = plt.subplots(figsize=figsize)
 
+    # Obtener resolución de pantalla (px) — Windows: GetSystemMetrics
+    try:
+        screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+        screen_h = ctypes.windll.user32.GetSystemMetrics(1)
+    except Exception:
+        # fallback si no disponible
+        screen_w, screen_h = 0, 0
+
     # Mostrar solo el cuadrante positivo: x desde 0 hasta span_x, y invertido (span_y .. 0)
     ax.set_xlim(0.0, span_x)
     ax.set_ylim(span_y, 0.0)  # invertir Y para que 0 esté arriba
@@ -148,6 +157,11 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     ax.axhline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
     ax.axvline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
     ax.legend(loc='upper right', fontsize='small')
+
+    # Añadir etiqueta con resolución de pantalla en la esquina superior izquierda del figure
+    if screen_w and screen_h:
+        fig.text(0.01, 0.99, f"Screen: {screen_w} x {screen_h} px",
+                 ha='left', va='top', fontsize=9, color='black', zorder=30)
 
     plt.show(block=False)
     return fig, ax
