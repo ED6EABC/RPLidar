@@ -104,12 +104,19 @@ def do_status(port, baud):
             except:
                 pass
 
-def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANELS_X, panels_y=PANELS_Y):
+def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANELS_X, panels_y=PANELS_Y,
+              origin_offset_panels_x=0, origin_offset_panels_y=0):
     """Crear ventana gráfica mostrando solo paneles positivos en x,y (desde 0 hasta span).
-    El eje Y está invertido para que el origen (0,0) quede en la esquina superior izquierda."""
+    El eje Y está invertido para que el origen (0,0) quede en la esquina superior izquierda.
+    origin_offset_panels_x/y: cantidad de paneles a desplazar la posición del RPLidar desde la
+    esquina superior izquierda (valores enteros, pueden ser 0)."""
     # span total por eje calculado a partir del número de paneles
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
+
+    # calcular offset del RPLidar en metros
+    offset_x_m = origin_offset_panels_x * panel_size
+    offset_y_m = origin_offset_panels_y * panel_size
 
     # ajustar tamaño de figura según la relación de spans para mantener aspecto igual
     base = 6.0
@@ -151,11 +158,14 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     ax.grid(which='major', color='gray', linewidth=1.0)
     ax.grid(which='minor', color='lightgray', linewidth=0.4, linestyle=':')
 
-    # Marcar la posición del RPLidar en (0,0) — ahora esquina superior izquierda
-    ax.plot(0.0, 0.0, marker='o', color='blue', markersize=8, label='RPLidar (0,0)', zorder=10)
-    # líneas de referencia en x=0 y y=0
+    # Marcar la posición del RPLidar en offset (m) desde la esquina superior izquierda
+    ax.plot(offset_x_m, offset_y_m, marker='o', color='blue', markersize=8, label='RPLidar (offset)', zorder=10)
+    # líneas de referencia en los bordes (x=0,y=0) y en la posición del RPLidar
     ax.axhline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
     ax.axvline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
+    # línea indicando la posición del sensor
+    ax.axvline(offset_x_m, color='blue', linewidth=0.6, alpha=0.8, linestyle='--', zorder=6)
+    ax.axhline(offset_y_m, color='blue', linewidth=0.6, alpha=0.8, linestyle='--', zorder=6)
     ax.legend(loc='upper right', fontsize='small')
 
     # Añadir etiqueta con resolución de pantalla en la esquina superior izquierda del figure
@@ -178,18 +188,21 @@ def live_scan_and_plot(lidar, ax, stop_event,
                        pause_s=0.02,
                        point_ttl_s=1.0,
                        angle_min_deg=0.0,
-                       angle_max_deg=90.0):
+                       angle_max_deg=90.0,
+                       origin_offset_panels_x=0, origin_offset_panels_y=0):
     """
     Mostrar puntos en tiempo real usando la conexión 'lidar' ya abierta.
-    Agrupa puntos dentro de CLUSTER_RADIUS_M y muestra centros.
-    Si un centro cambia de posición (más que MOVEMENT_DETECT_DIST) se dibuja
-    un círculo verde de RADIO_MOVIMIENTO en esa nueva posición durante MOVEMENT_CIRCLE_TTL segundos.
-    Añade además una etiqueta sobre cada punto rojo con su posición en píxeles de acuerdo a los paneles.
+    origin_offset_panels_x/y: cantidad de paneles a desplazar la posición del RPLidar
+    (se aplica sumando el offset en metros a cada punto leído).
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
 
-    points = deque(maxlen=buffer_max)  # almacena (t, x, y)
+    # offset en metros
+    offset_x_m = origin_offset_panels_x * panel_size
+    offset_y_m = origin_offset_panels_y * panel_size
+
+    points = deque(maxlen=buffer_max)  # almacena (t, x_plot, y_plot)
     scatter = ax.scatter([], [], s=20, c='red', linewidths=0)
 
     # etiquetas de texto para cada centro (se reemplazan en cada frame)
@@ -246,8 +259,12 @@ def live_scan_and_plot(lidar, ax, stop_event,
                             continue
                         r = dist_mm / 1000.0  # metros
                         theta = math.radians(angle_deg)
-                        x = r * math.cos(theta)
-                        y = r * math.sin(theta)
+                        # coordenadas relativas al sensor
+                        x_rel = r * math.cos(theta)
+                        y_rel = r * math.sin(theta)
+                        # convertir a coordenadas del plot (sumando offset del sensor)
+                        x = x_rel + offset_x_m
+                        y = y_rel + offset_y_m
                         # conservar solo puntos dentro del cuadrante positivo [0, span]
                         if 0.0 <= x <= span_x and 0.0 <= y <= span_y:
                             points.append((now, x, y))
@@ -298,8 +315,6 @@ def live_scan_and_plot(lidar, ax, stop_event,
                                     label_y = c[1] - LABEL_OFFSET_M
 
                                 # convertir coordenadas en metros a píxeles (origen top-left)
-                                # px = floor(x / panel_size * panel_pixels)
-                                # py = floor(y / panel_size * panel_pixels)
                                 px = int(math.floor((c[0] / panel_size) * panel_pixels))
                                 py = int(math.floor((c[1] / panel_size) * panel_pixels))
                                 # asegurar rango válido
@@ -412,6 +427,8 @@ def main():
     p.add_argument("--baud", type=int, default=BAUD, help="Baudios (por defecto 256000).")
     p.add_argument("--panels-x", type=int, default=PANELS_X, help="Cantidad de paneles en X.")
     p.add_argument("--panels-y", type=int, default=PANELS_Y, help="Cantidad de paneles en Y.")
+    p.add_argument("--origin-offset-x", type=int, default=0, help="Offset de origen en paneles (X).")
+    p.add_argument("--origin-offset-y", type=int, default=0, help="Offset de origen en paneles (Y).")
     p.add_argument("--buffer", type=int, default=POINT_BUFFER, help="Buffer máximo de puntos.")
     args = p.parse_args()
 
@@ -474,9 +491,56 @@ def main():
         print()
         return
 
+    # Prompt para especificar offset del origen (en paneles) antes de iniciar el programa
+    try:
+        while True:
+            try:
+                s = input(f"Offset origen en paneles X [{args.origin_offset_x}]: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print()
+                return
+            if s == '':
+                origin_offset_x = args.origin_offset_x
+                break
+            try:
+                origin_offset_x = int(s)
+                # permitir 0 o más (puede ajustarse si se desea permitir negativos)
+                if origin_offset_x < 0:
+                    print("Ingrese un entero mayor o igual a 0.")
+                    continue
+                break
+            except ValueError:
+                print("Entrada inválida. Ingrese un número entero.")
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+
+    try:
+        while True:
+            try:
+                s = input(f"Offset origen en paneles Y [{args.origin_offset_y}]: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print()
+                return
+            if s == '':
+                origin_offset_y = args.origin_offset_y
+                break
+            try:
+                origin_offset_y = int(s)
+                if origin_offset_y < 0:
+                    print("Ingrese un entero mayor o igual a 0.")
+                    continue
+                break
+            except ValueError:
+                print("Entrada inválida. Ingrese un número entero.")
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+
     # Crear gráfico con ejes X,Y usando los valores provistos por prompt
     fig, ax = init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
-                        panels_x=panels_x, panels_y=panels_y)
+                        panels_x=panels_x, panels_y=panels_y,
+                        origin_offset_panels_x=origin_offset_x, origin_offset_panels_y=origin_offset_y)
 
     # Por defecto: iniciar RPLidar y mostrar escaneo en vivo.
     stop_event = threading.Event()
@@ -492,7 +556,8 @@ def main():
         live_scan_and_plot(lidar, ax, stop_event,
                            panels_x=panels_x, panels_y=panels_y,
                            panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
-                           buffer_max=args.buffer)
+                           buffer_max=args.buffer,
+                           origin_offset_panels_x=origin_offset_x, origin_offset_panels_y=origin_offset_y)
     except RPLidarException as e:
         print("Error inicializando RPLidar:", e)
     except KeyboardInterrupt:
