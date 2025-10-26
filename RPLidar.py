@@ -28,8 +28,8 @@ PANEL_SIZE_M = 0.5
 PANEL_PIXELS = 128
 
 # Cantidad de paneles en cada eje (configurable)
-PANELS_X = 2
-PANELS_Y = 2
+PANELS_X = 1
+PANELS_Y = 1
 
 # Buffer máximo de puntos para que la interfaz sea fluida
 POINT_BUFFER = 8000
@@ -103,7 +103,8 @@ def do_status(port, baud):
                 pass
 
 def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANELS_X, panels_y=PANELS_Y):
-    """Crear ventana gráfica mostrando solo paneles positivos en x,y (desde 0 hasta span)."""
+    """Crear ventana gráfica mostrando solo paneles positivos en x,y (desde 0 hasta span).
+    El eje Y está invertido para que el origen (0,0) quede en la esquina superior izquierda."""
     # span total por eje calculado a partir del número de paneles
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
@@ -118,13 +119,13 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     plt.ion()
     fig, ax = plt.subplots(figsize=figsize)
 
-    # Mostrar solo el cuadrante positivo: x y y desde 0 hasta span
+    # Mostrar solo el cuadrante positivo: x desde 0 hasta span_x, y invertido (span_y .. 0)
     ax.set_xlim(0.0, span_x)
-    ax.set_ylim(0.0, span_y)
+    ax.set_ylim(span_y, 0.0)  # invertir Y para que 0 esté arriba
 
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
-    ax.set_title('RPLidar - cuadrante positivo X,Y')
+    ax.set_title('RPLidar - origen en esquina superior izquierda (0,0)')
     ax.set_aspect('equal', 'box')
 
     # Major grid cada panel_size (panel), minor grid cada pixel (panel_size/panel_pixels)
@@ -140,7 +141,7 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     ax.grid(which='major', color='gray', linewidth=1.0)
     ax.grid(which='minor', color='lightgray', linewidth=0.4, linestyle=':')
 
-    # Marcar la posición del RPLidar en (0,0) en la esquina inferior izquierda
+    # Marcar la posición del RPLidar en (0,0) — ahora esquina superior izquierda
     ax.plot(0.0, 0.0, marker='o', color='blue', markersize=8, label='RPLidar (0,0)', zorder=10)
     # líneas de referencia en x=0 y y=0
     ax.axhline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
