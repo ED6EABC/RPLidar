@@ -12,6 +12,7 @@ import argparse
 import time
 from rplidar import RPLidar, RPLidarException
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 PORT = 'COM3'
 BAUD = 256000
@@ -70,15 +71,38 @@ def do_status(port, baud):
             except:
                 pass
 
-def init_plot():
-    """Crear ventana gráfica con ejes x,y (interactiva)."""
+def init_plot(panel_size=0.5, panel_pixels=128, span_m=4.0):
+    """Crear ventana gráfica con ejes x,y (interactiva).
+    - panel_size: tamaño de cada panel en metros (0.5 m = 50 cm)
+    - panel_pixels: resolución de cada panel en píxeles (128)
+    - span_m: rango total por eje en metros (por defecto 4 m -> ±2 m)
+    """
     plt.ion()
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6,6))
+
+    # límites centrados en 0 (ajuste opcional mediante span_m)
+    half = span_m / 2.0
+    ax.set_xlim(-half, half)
+    ax.set_ylim(-half, half)
+
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
     ax.set_title('RPLidar - ejes X,Y')
     ax.set_aspect('equal', 'box')
-    ax.grid(True)
+
+    # Major grid cada panel_size (0.5 m), minor grid cada pixel (panel_size/panel_pixels)
+    major = ticker.MultipleLocator(panel_size)
+    minor = ticker.MultipleLocator(panel_size / panel_pixels)
+
+    ax.xaxis.set_major_locator(major)
+    ax.yaxis.set_major_locator(major)
+    ax.xaxis.set_minor_locator(minor)
+    ax.yaxis.set_minor_locator(minor)
+
+    # Dibujar cuadricula: paneles bien visibles y subdivisión por píxeles
+    ax.grid(which='major', color='gray', linewidth=1.0)
+    ax.grid(which='minor', color='lightgray', linewidth=0.4, linestyle=':')
+
     plt.show(block=False)
     return fig, ax
 
