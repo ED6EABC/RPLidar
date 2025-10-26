@@ -103,7 +103,7 @@ def do_status(port, baud):
                 pass
 
 def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANELS_X, panels_y=PANELS_Y):
-    """Crear ventana gráfica con ejes x,y (interactiva)."""
+    """Crear ventana gráfica con ejes x,y (interactiva) y marcar la posición del RPLidar en (0,0)."""
     # span total por eje calculado a partir del número de paneles
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
@@ -138,6 +138,12 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     # Dibujar cuadricula: paneles bien visibles y subdivisión por píxeles
     ax.grid(which='major', color='gray', linewidth=1.0)
     ax.grid(which='minor', color='lightgray', linewidth=0.4, linestyle=':')
+
+    # Marcar la posición del RPLidar en (0,0) con un marcador y líneas de referencia
+    ax.plot(0.0, 0.0, marker='o', color='blue', markersize=8, label='RPLidar (0,0)', zorder=10)
+    ax.axhline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
+    ax.axvline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
+    ax.legend(loc='upper right', fontsize='small')
 
     plt.show(block=False)
     return fig, ax
