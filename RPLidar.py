@@ -153,10 +153,13 @@ def live_scan_and_plot(lidar, ax, stop_event,
                        panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
                        buffer_max=POINT_BUFFER,
                        pause_s=0.02,
-                       point_ttl_s=1.0):
+                       point_ttl_s=1.0,
+                       angle_min_deg=0.0,
+                       angle_max_deg=90.0):
     """
     Mostrar puntos en tiempo real usando la conexión 'lidar' ya abierta.
     Maneja errores de paquete ("Wrong body size") re-sincronizando el puerto.
+    Solo se añaden al gráfico los puntos cuyo ángulo esté entre angle_min_deg y angle_max_deg (grados).
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
@@ -176,6 +179,9 @@ def live_scan_and_plot(lidar, ax, stop_event,
                     for (_, angle_deg, dist_mm) in scan:
                         if stop_event.is_set():
                             break
+                        # filtrar por ángulo solicitado
+                        if not (angle_min_deg <= angle_deg <= angle_max_deg):
+                            continue
                         if dist_mm == 0:
                             continue
                         r = dist_mm / 1000.0  # metros
