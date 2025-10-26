@@ -19,6 +19,7 @@ import numpy as np
 from rplidar import RPLidar, RPLidarException
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from matplotlib.patches import Circle
 
 PORT = 'COM3'
 BAUD = 256000
@@ -161,9 +162,9 @@ def live_scan_and_plot(lidar, ax, stop_event,
                        angle_max_deg=90.0):
     """
     Mostrar puntos en tiempo real usando la conexión 'lidar' ya abierta.
-    Solo se añaden al gráfico los puntos cuyo ángulo esté entre angle_min_deg y angle_max_deg (grados)
-    y que caigan dentro del cuadrante positivo definido por los paneles (0..span).
-    Agrupa puntos que estén dentro de un radio de 0.20 m y los muestra como un solo punto (centroide).
+    Agrupa puntos dentro de CLUSTER_RADIUS_M y muestra centros.
+    Si un centro cambia de posición (más que MOVEMENT_DETECT_DIST) se dibuja
+    un círculo verde de RADIO_MOVIMIENTO en esa nueva posición durante MOVEMENT_CIRCLE_TTL segundos.
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
@@ -194,7 +195,13 @@ def live_scan_and_plot(lidar, ax, stop_event,
         counts = np.array([c[2] for c in clusters], dtype=int)
         return centers, counts
 
-    CLUSTER_RADIUS_M = 0.20  # 20 cm
+    CLUSTER_RADIUS_M = 0.20  # 20 cm (agrupamiento)
+    MOVEMENT_DETECT_DIST = 0.01  # 1 cm -> umbral para considerar que cambió de posición
+    RADIO_MOVIMIENTO = 0.05  # 5 cm círculo verde
+    MOVEMENT_CIRCLE_TTL = 0.6  # segundos que permanece el círculo
+
+    prev_centers = None
+    movement_patches = []  # lista de (Circle patch, expire_time)
 
     try:
         while not stop_event.is_set():
@@ -224,6 +231,18 @@ def live_scan_and_plot(lidar, ax, stop_event,
                     while points and points[0][0] < cutoff:
                         points.popleft()
 
+                    # remover patches expirados
+                    new_movement_patches = []
+                    for p, exp in movement_patches:
+                        if now >= exp:
+                            try:
+                                p.remove()
+                            except Exception:
+                                pass
+                        else:
+                            new_movement_patches.append((p, exp))
+                    movement_patches = new_movement_patches
+
                     if points:
                         arr = np.asarray([(px, py) for (_, px, py) in points])
                         centers, counts = _cluster_points(arr, CLUSTER_RADIUS_M)
@@ -232,12 +251,34 @@ def live_scan_and_plot(lidar, ax, stop_event,
                             # escalar tamaño por cantidad de puntos en el cluster (visual)
                             sizes = np.clip(8 + counts * 6, 8, 200)
                             scatter.set_sizes(sizes)
+
+                            # detectar movimientos comparando con prev_centers
+                            if prev_centers is None or prev_centers.size == 0:
+                                # primera vez: no marcar movimientos, sólo guardar
+                                prev_centers = centers.copy()
+                            else:
+                                # para cada centro actual encontrar el prev más cercano
+                                for c in centers:
+                                    # calcular distancias a prev_centers
+                                    dists = np.sum((prev_centers - c) ** 2, axis=1)
+                                    idx = np.argmin(dists)
+                                    dist = math.sqrt(dists[idx])
+                                    if dist >= MOVEMENT_DETECT_DIST:
+                                        # crear círculo verde en la posición nueva
+                                        circ = Circle((c[0], c[1]), RADIO_MOVIMIENTO,
+                                                      edgecolor='green', facecolor='none',
+                                                      linewidth=1.5, zorder=12)
+                                        ax.add_patch(circ)
+                                        movement_patches.append((circ, now + MOVEMENT_CIRCLE_TTL))
+                                prev_centers = centers.copy()
                         else:
                             scatter.set_offsets(np.empty((0, 2)))
                             scatter.set_sizes([])
+                            prev_centers = None
                     else:
                         scatter.set_offsets(np.empty((0, 2)))
                         scatter.set_sizes([])
+                        prev_centers = None
 
                     try:
                         ax.figure.canvas.draw_idle()
@@ -269,6 +310,12 @@ def live_scan_and_plot(lidar, ax, stop_event,
     except KeyboardInterrupt:
         stop_event.set()
     finally:
+        # limpiar patches
+        for p, _ in movement_patches:
+            try:
+                p.remove()
+            except:
+                pass
         try:
             lidar.stop()
         except:
