@@ -17,6 +17,14 @@ import matplotlib.ticker as ticker
 PORT = 'COM3'
 BAUD = 256000
 
+# Tamaño del panel en metros (0.5 m = 50 cm) y resolución por panel (píxeles)
+PANEL_SIZE_M = 0.5
+PANEL_PIXELS = 128
+
+# Cantidad de paneles en cada eje (configurable)
+PANELS_X = 2
+PANELS_Y = 2
+
 def connect(port, baud):
     return RPLidar(port, baudrate=baud)
 
@@ -71,26 +79,31 @@ def do_status(port, baud):
             except:
                 pass
 
-def init_plot(panel_size=0.5, panel_pixels=128, span_m=4.0):
-    """Crear ventana gráfica con ejes x,y (interactiva).
-    - panel_size: tamaño de cada panel en metros (0.5 m = 50 cm)
-    - panel_pixels: resolución de cada panel en píxeles (128)
-    - span_m: rango total por eje en metros (por defecto 4 m -> ±2 m)
-    """
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(6,6))
+def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANELS_X, panels_y=PANELS_Y):
+    """Crear ventana gráfica con ejes x,y (interactiva)."""
+    # span total por eje calculado a partir del número de paneles
+    span_x = panels_x * panel_size
+    span_y = panels_y * panel_size
 
-    # límites centrados en 0 (ajuste opcional mediante span_m)
-    half = span_m / 2.0
-    ax.set_xlim(-half, half)
-    ax.set_ylim(-half, half)
+    # ajustar tamaño de figura según la relación de spans para mantener aspecto igual
+    base = 6.0
+    if span_y > 0:
+        figsize = (max(1.0, base * (span_x / span_y)), base)
+    else:
+        figsize = (base, base)
+
+    plt.ion()
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.set_xlim(-span_x / 2.0, span_x / 2.0)
+    ax.set_ylim(-span_y / 2.0, span_y / 2.0)
 
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
     ax.set_title('RPLidar - ejes X,Y')
     ax.set_aspect('equal', 'box')
 
-    # Major grid cada panel_size (0.5 m), minor grid cada pixel (panel_size/panel_pixels)
+    # Major grid cada panel_size (panel), minor grid cada pixel (panel_size/panel_pixels)
     major = ticker.MultipleLocator(panel_size)
     minor = ticker.MultipleLocator(panel_size / panel_pixels)
 
