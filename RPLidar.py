@@ -415,12 +415,9 @@ def main():
     p.add_argument("--buffer", type=int, default=POINT_BUFFER, help="Buffer máximo de puntos.")
     args = p.parse_args()
 
-    # Crear gráfico con ejes X,Y al iniciar el script (siempre se muestra)
-    fig, ax = init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
-                        panels_x=args.panels_x, panels_y=args.panels_y)
-
     action = args.action
-    # si se pide acciones puntuales, ejecutarlas y salir
+
+    # Acciones puntuales: no pedir prompt, ejecutar y salir
     if action == 'on':
         do_on(args.port, args.baud)
         return
@@ -430,6 +427,56 @@ def main():
     elif action == 'status':
         do_status(args.port, args.baud)
         return
+
+    # Prompt para especificar cantidad de paneles en X antes de iniciar el programa
+    try:
+        while True:
+            try:
+                s = input(f"Cantidad de paneles en X [{args.panels_x}]: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print()
+                return
+            if s == '':
+                panels_x = args.panels_x
+                break
+            try:
+                panels_x = int(s)
+                if panels_x < 1:
+                    print("Ingrese un entero mayor o igual a 1.")
+                    continue
+                break
+            except ValueError:
+                print("Entrada inválida. Ingrese un número entero.")
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+
+    # Prompt para especificar cantidad de paneles en Y antes de iniciar el programa
+    try:
+        while True:
+            try:
+                s = input(f"Cantidad de paneles en Y [{args.panels_y}]: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print()
+                return
+            if s == '':
+                panels_y = args.panels_y
+                break
+            try:
+                panels_y = int(s)
+                if panels_y < 1:
+                    print("Ingrese un entero mayor o igual a 1.")
+                    continue
+                break
+            except ValueError:
+                print("Entrada inválida. Ingrese un número entero.")
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return
+
+    # Crear gráfico con ejes X,Y usando los valores provistos por prompt
+    fig, ax = init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
+                        panels_x=panels_x, panels_y=panels_y)
 
     # Por defecto: iniciar RPLidar y mostrar escaneo en vivo.
     stop_event = threading.Event()
@@ -443,7 +490,7 @@ def main():
         print("Motor arrancado. Cerrar la ventana o presionar Ctrl+C para detener.")
         # ejecutar escaneo en el hilo principal (permite procesar eventos GUI con plt.pause)
         live_scan_and_plot(lidar, ax, stop_event,
-                           panels_x=args.panels_x, panels_y=args.panels_y,
+                           panels_x=panels_x, panels_y=panels_y,
                            panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
                            buffer_max=args.buffer)
     except RPLidarException as e:
