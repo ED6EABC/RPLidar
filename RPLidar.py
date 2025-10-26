@@ -189,11 +189,13 @@ def live_scan_and_plot(lidar, ax, stop_event,
                        point_ttl_s=1.0,
                        angle_min_deg=0.0,
                        angle_max_deg=90.0,
-                       origin_offset_panels_x=0, origin_offset_panels_y=0):
+                       origin_offset_panels_x=0, origin_offset_panels_y=0,
+                       enable_auto_click=False):
     """
     Mostrar puntos en tiempo real usando la conexión 'lidar' ya abierta.
     origin_offset_panels_x/y: cantidad de paneles a desplazar la posición del RPLidar
     (se aplica sumando el offset en metros a cada punto leído).
+    enable_auto_click: si es True, realiza clicks automáticos en los círculos verdes.
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
@@ -345,6 +347,39 @@ def live_scan_and_plot(lidar, ax, stop_event,
                                                       linewidth=1.5, zorder=12)
                                         ax.add_patch(circ)
                                         movement_patches.append((circ, now + MOVEMENT_CIRCLE_TTL))
+                                        
+                                        # Realizar click automático si está habilitado
+                                        if enable_auto_click:
+                                            # Convertir coordenadas del gráfico a coordenadas de pantalla
+                                            try:
+                                                # Obtener transformación de datos a píxeles de pantalla
+                                                transform = ax.transData.transform
+                                                screen_coords = transform((c[0], c[1]))
+                                                
+                                                # Obtener posición de la figura en pantalla
+                                                fig_manager = plt.get_current_fig_manager()
+                                                if hasattr(fig_manager, 'window'):
+                                                    window = fig_manager.window
+                                                    if hasattr(window, 'winfo_x') and hasattr(window, 'winfo_y'):
+                                                        # Para backend TkAgg
+                                                        fig_x = window.winfo_x()
+                                                        fig_y = window.winfo_y()
+                                                        fig_width = window.winfo_width()
+                                                        fig_height = window.winfo_height()
+                                                        
+                                                        # Calcular posición absoluta en pantalla
+                                                        screen_x = fig_x + screen_coords[0]
+                                                        screen_y = fig_y + fig_height - screen_coords[1]  # Invertir Y
+                                                        
+                                                        # Realizar click usando ctypes
+                                                        ctypes.windll.user32.SetCursorPos(int(screen_x), int(screen_y))
+                                                        ctypes.windll.user32.mouse_event(2, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTDOWN
+                                                        ctypes.windll.user32.mouse_event(4, 0, 0, 0, 0)  # MOUSEEVENTF_LEFTUP
+                                                        
+                                                        print(f"Click automático en ({int(screen_x)}, {int(screen_y)}) - Centro: ({c[0]:.3f}, {c[1]:.3f}) m")
+                                            except Exception as e:
+                                                print(f"Error al realizar click automático: {e}")
+                                        
                                 prev_centers = centers.copy()
                         else:
                             scatter.set_offsets(np.empty((0, 2)))
@@ -420,6 +455,21 @@ def prompt_action():
         print()
         return 'exit'
 
+def prompt_auto_click():
+    """Pregunta al usuario si desea habilitar los clicks automáticos."""
+    try:
+        while True:
+            respuesta = input("¿Habilitar clicks automáticos en círculos verdes? (s/n): ").strip().lower()
+            if respuesta in ('s', 'si', 'sí', 'y', 'yes'):
+                return True
+            elif respuesta in ('n', 'no'):
+                return False
+            else:
+                print("Por favor, responda 's' para sí o 'n' para no.")
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return False
+
 def main():
     p = argparse.ArgumentParser(description="Control simple RPLidar A2M12 (COM3, 256000).")
     p.add_argument("action", nargs='?', choices=['on','off','status','scan'], help="acción a ejecutar (opcional).")
@@ -444,6 +494,9 @@ def main():
     elif action == 'status':
         do_status(args.port, args.baud)
         return
+
+    # Prompt para habilitar clicks automáticos
+    enable_auto_click = prompt_auto_click()
 
     # Prompt para especificar cantidad de paneles en X antes de iniciar el programa
     try:
@@ -557,7 +610,8 @@ def main():
                            panels_x=panels_x, panels_y=panels_y,
                            panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
                            buffer_max=args.buffer,
-                           origin_offset_panels_x=origin_offset_x, origin_offset_panels_y=origin_offset_y)
+                           origin_offset_panels_x=origin_offset_x, origin_offset_panels_y=origin_offset_y,
+                           enable_auto_click=enable_auto_click)
     except RPLidarException as e:
         print("Error inicializando RPLidar:", e)
     except KeyboardInterrupt:
