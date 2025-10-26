@@ -28,8 +28,8 @@ PANEL_SIZE_M = 0.5
 PANEL_PIXELS = 128
 
 # Cantidad de paneles en cada eje (configurable)
-PANELS_X = 1
-PANELS_Y = 1
+PANELS_X = 4
+PANELS_Y = 2
 
 # Buffer máximo de puntos para que la interfaz sea fluida
 POINT_BUFFER = 8000
