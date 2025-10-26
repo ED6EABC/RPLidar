@@ -103,7 +103,7 @@ def do_status(port, baud):
                 pass
 
 def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANELS_X, panels_y=PANELS_Y):
-    """Crear ventana gráfica con ejes x,y (interactiva) y marcar la posición del RPLidar en (0,0)."""
+    """Crear ventana gráfica mostrando solo paneles positivos en x,y (desde 0 hasta span)."""
     # span total por eje calculado a partir del número de paneles
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
@@ -118,12 +118,13 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     plt.ion()
     fig, ax = plt.subplots(figsize=figsize)
 
-    ax.set_xlim(-span_x / 2.0, span_x / 2.0)
-    ax.set_ylim(-span_y / 2.0, span_y / 2.0)
+    # Mostrar solo el cuadrante positivo: x y y desde 0 hasta span
+    ax.set_xlim(0.0, span_x)
+    ax.set_ylim(0.0, span_y)
 
     ax.set_xlabel('x (m)')
     ax.set_ylabel('y (m)')
-    ax.set_title('RPLidar - ejes X,Y')
+    ax.set_title('RPLidar - cuadrante positivo X,Y')
     ax.set_aspect('equal', 'box')
 
     # Major grid cada panel_size (panel), minor grid cada pixel (panel_size/panel_pixels)
@@ -139,8 +140,9 @@ def init_plot(panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS, panels_x=PANEL
     ax.grid(which='major', color='gray', linewidth=1.0)
     ax.grid(which='minor', color='lightgray', linewidth=0.4, linestyle=':')
 
-    # Marcar la posición del RPLidar en (0,0) con un marcador y líneas de referencia
+    # Marcar la posición del RPLidar en (0,0) en la esquina inferior izquierda
     ax.plot(0.0, 0.0, marker='o', color='blue', markersize=8, label='RPLidar (0,0)', zorder=10)
+    # líneas de referencia en x=0 y y=0
     ax.axhline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
     ax.axvline(0.0, color='black', linewidth=0.8, alpha=0.6, zorder=5)
     ax.legend(loc='upper right', fontsize='small')
@@ -158,13 +160,11 @@ def live_scan_and_plot(lidar, ax, stop_event,
                        angle_max_deg=90.0):
     """
     Mostrar puntos en tiempo real usando la conexión 'lidar' ya abierta.
-    Maneja errores de paquete ("Wrong body size") re-sincronizando el puerto.
-    Solo se añaden al gráfico los puntos cuyo ángulo esté entre angle_min_deg y angle_max_deg (grados).
+    Solo se añaden al gráfico los puntos cuyo ángulo esté entre angle_min_deg y angle_max_deg (grados)
+    y que caigan dentro del cuadrante positivo definido por los paneles (0..span).
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
-    half_x = span_x / 2.0
-    half_y = span_y / 2.0
 
     points = deque(maxlen=buffer_max)  # almacena (t, x, y)
     scatter = ax.scatter([], [], s=2, c='red', linewidths=0)
@@ -188,7 +188,8 @@ def live_scan_and_plot(lidar, ax, stop_event,
                         theta = math.radians(angle_deg)
                         x = r * math.cos(theta)
                         y = r * math.sin(theta)
-                        if -half_x <= x <= half_x and -half_y <= y <= half_y:
+                        # conservar solo puntos dentro del cuadrante positivo [0, span]
+                        if 0.0 <= x <= span_x and 0.0 <= y <= span_y:
                             points.append((now, x, y))
 
                     # purgar por TTL
@@ -208,12 +209,10 @@ def live_scan_and_plot(lidar, ax, stop_event,
                         pass
                     plt.pause(pause_s)
 
-                # si iter_scans terminó normalmente, hacer una pequeña espera antes de reintentar
                 time.sleep(0.01)
 
             except RPLidarException as e:
                 msg = str(e)
-                # si es el error de sincronización, limpiar buffer y reintentar
                 if 'Wrong body size' in msg or 'wrong body size' in msg.lower():
                     ser = getattr(lidar, '_serial', None)
                     if ser is not None:
@@ -224,11 +223,9 @@ def live_scan_and_plot(lidar, ax, stop_event,
                                 ser.flushInput()
                             except:
                                 pass
-                    # pequeña pausa para que el dispositivo vuelva a estado estable
                     time.sleep(0.05)
                     continue
                 else:
-                    # otros errores los informamos y salimos del bucle
                     print("RPLidarException en live scan:", e)
                     stop_event.set()
                     break
