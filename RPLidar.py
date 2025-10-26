@@ -165,12 +165,16 @@ def live_scan_and_plot(lidar, ax, stop_event,
     Agrupa puntos dentro de CLUSTER_RADIUS_M y muestra centros.
     Si un centro cambia de posición (más que MOVEMENT_DETECT_DIST) se dibuja
     un círculo verde de RADIO_MOVIMIENTO en esa nueva posición durante MOVEMENT_CIRCLE_TTL segundos.
+    Añade además una etiqueta sobre cada punto rojo con su posición en píxeles de acuerdo a los paneles.
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
 
     points = deque(maxlen=buffer_max)  # almacena (t, x, y)
     scatter = ax.scatter([], [], s=20, c='red', linewidths=0)
+
+    # etiquetas de texto para cada centro (se reemplazan en cada frame)
+    label_texts = []
 
     def _cluster_points(points_arr, radius):
         """Agrupa puntos por distancia (algoritmo greedy): devuelve centros y cuentas."""
@@ -202,6 +206,9 @@ def live_scan_and_plot(lidar, ax, stop_event,
 
     prev_centers = None
     movement_patches = []  # lista de (Circle patch, expire_time)
+
+    # offset para posicionar la etiqueta ligeramente por encima del punto (en metros)
+    LABEL_OFFSET_M = 0.02
 
     try:
         while not stop_event.is_set():
@@ -243,6 +250,14 @@ def live_scan_and_plot(lidar, ax, stop_event,
                             new_movement_patches.append((p, exp))
                     movement_patches = new_movement_patches
 
+                    # remover etiquetas antiguas (será reemplazadas por las nuevas)
+                    for t in label_texts:
+                        try:
+                            t.remove()
+                        except Exception:
+                            pass
+                    label_texts = []
+
                     if points:
                         arr = np.asarray([(px, py) for (_, px, py) in points])
                         centers, counts = _cluster_points(arr, CLUSTER_RADIUS_M)
@@ -251,6 +266,32 @@ def live_scan_and_plot(lidar, ax, stop_event,
                             # escalar tamaño por cantidad de puntos en el cluster (visual)
                             sizes = np.clip(8 + counts * 6, 8, 200)
                             scatter.set_sizes(sizes)
+
+                            # crear etiquetas sobre cada centro con coordenadas en píxeles
+                            total_pixels_x = panels_x * panel_pixels
+                            total_pixels_y = panels_y * panel_pixels
+                            for c in centers:
+                                # calcular posición de la etiqueta según inversión de Y del eje
+                                y0, y1 = ax.get_ylim()
+                                if y0 < y1:
+                                    label_y = c[1] + LABEL_OFFSET_M
+                                else:
+                                    label_y = c[1] - LABEL_OFFSET_M
+
+                                # convertir coordenadas en metros a píxeles (origen top-left)
+                                # px = floor(x / panel_size * panel_pixels)
+                                # py = floor(y / panel_size * panel_pixels)
+                                px = int(math.floor((c[0] / panel_size) * panel_pixels))
+                                py = int(math.floor((c[1] / panel_size) * panel_pixels))
+                                # asegurar rango válido
+                                px = max(0, min(px, total_pixels_x - 1))
+                                py = max(0, min(py, total_pixels_y - 1))
+
+                                txt = ax.text(c[0], label_y,
+                                              f"({px},{py})",
+                                              fontsize=7, color='black', zorder=20,
+                                              ha='center', va='bottom' if y0 < y1 else 'top')
+                                label_texts.append(txt)
 
                             # detectar movimientos comparando con prev_centers
                             if prev_centers is None or prev_centers.size == 0:
@@ -310,10 +351,15 @@ def live_scan_and_plot(lidar, ax, stop_event,
     except KeyboardInterrupt:
         stop_event.set()
     finally:
-        # limpiar patches
+        # limpiar patches y etiquetas
         for p, _ in movement_patches:
             try:
                 p.remove()
+            except:
+                pass
+        for t in label_texts:
+            try:
+                t.remove()
             except:
                 pass
         try:
