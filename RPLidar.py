@@ -5,12 +5,13 @@ Uso:
   python RPLidar.py off            # apaga (detiene el motor)
   python RPLidar.py status         # muestra info / salud
   python RPLidar.py                # solicita acción en terminal
-Requiere: pip install rplidar
+Requiere: pip install rplidar matplotlib
 """
 import sys
 import argparse
 import time
 from rplidar import RPLidar, RPLidarException
+import matplotlib.pyplot as plt
 
 PORT = 'COM3'
 BAUD = 256000
@@ -69,6 +70,18 @@ def do_status(port, baud):
             except:
                 pass
 
+def init_plot():
+    """Crear ventana gráfica con ejes x,y (interactiva)."""
+    plt.ion()
+    fig, ax = plt.subplots()
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_title('RPLidar - ejes X,Y')
+    ax.set_aspect('equal', 'box')
+    ax.grid(True)
+    plt.show(block=False)
+    return fig, ax
+
 def prompt_action():
     try:
         while True:
@@ -86,6 +99,9 @@ def main():
     p.add_argument("--port", default=PORT, help="Puerto serie (por defecto COM3).")
     p.add_argument("--baud", type=int, default=BAUD, help="Baudios (por defecto 256000).")
     args = p.parse_args()
+
+    # Crear gráfico con ejes X,Y al iniciar el script
+    fig, ax = init_plot()
 
     action = args.action
     if not action:
