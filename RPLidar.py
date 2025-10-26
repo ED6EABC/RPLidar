@@ -28,8 +28,8 @@ PANEL_SIZE_M = 0.5
 PANEL_PIXELS = 128
 
 # Cantidad de paneles en cada eje (configurable)
-PANELS_X = 4
-PANELS_Y = 2
+PANELS_X = 2
+PANELS_Y = 1
 
 # Buffer máximo de puntos para que la interfaz sea fluida
 POINT_BUFFER = 8000
@@ -163,12 +163,38 @@ def live_scan_and_plot(lidar, ax, stop_event,
     Mostrar puntos en tiempo real usando la conexión 'lidar' ya abierta.
     Solo se añaden al gráfico los puntos cuyo ángulo esté entre angle_min_deg y angle_max_deg (grados)
     y que caigan dentro del cuadrante positivo definido por los paneles (0..span).
+    Agrupa puntos que estén dentro de un radio de 0.20 m y los muestra como un solo punto (centroide).
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
 
     points = deque(maxlen=buffer_max)  # almacena (t, x, y)
-    scatter = ax.scatter([], [], s=2, c='red', linewidths=0)
+    scatter = ax.scatter([], [], s=20, c='red', linewidths=0)
+
+    def _cluster_points(points_arr, radius):
+        """Agrupa puntos por distancia (algoritmo greedy): devuelve centros y cuentas."""
+        if points_arr.size == 0:
+            return np.empty((0, 2)), np.empty((0,), dtype=int)
+        clusters = []  # cada cluster: [sum_x, sum_y, count]
+        r2 = radius * radius
+        for x, y in points_arr:
+            placed = False
+            for c in clusters:
+                cx = c[0] / c[2]
+                cy = c[1] / c[2]
+                if (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r2:
+                    c[0] += x
+                    c[1] += y
+                    c[2] += 1
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([x, y, 1])
+        centers = np.array([[c[0] / c[2], c[1] / c[2]] for c in clusters])
+        counts = np.array([c[2] for c in clusters], dtype=int)
+        return centers, counts
+
+    CLUSTER_RADIUS_M = 0.20  # 20 cm
 
     try:
         while not stop_event.is_set():
@@ -200,9 +226,18 @@ def live_scan_and_plot(lidar, ax, stop_event,
 
                     if points:
                         arr = np.asarray([(px, py) for (_, px, py) in points])
-                        scatter.set_offsets(arr)
+                        centers, counts = _cluster_points(arr, CLUSTER_RADIUS_M)
+                        if centers.size:
+                            scatter.set_offsets(centers)
+                            # escalar tamaño por cantidad de puntos en el cluster (visual)
+                            sizes = np.clip(8 + counts * 6, 8, 200)
+                            scatter.set_sizes(sizes)
+                        else:
+                            scatter.set_offsets(np.empty((0, 2)))
+                            scatter.set_sizes([])
                     else:
                         scatter.set_offsets(np.empty((0, 2)))
+                        scatter.set_sizes([])
 
                     try:
                         ax.figure.canvas.draw_idle()
