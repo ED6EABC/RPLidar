@@ -34,8 +34,22 @@ PANELS_Y = 2
 # Buffer máximo de puntos para que la interfaz sea fluida
 POINT_BUFFER = 8000
 
-def connect(port, baud):
-    return RPLidar(port, baudrate=baud)
+def connect(port, baud, timeout=1.0):
+    """Crear objeto RPLidar con timeout y dejar tiempo para que el dispositivo se estabilice."""
+    lidar = RPLidar(port, baudrate=baud, timeout=timeout)
+    # permitir que el puerto se estabilice
+    time.sleep(0.05)
+    # intentar limpiar buffer si existe pyserial
+    ser = getattr(lidar, '_serial', None)
+    if ser is not None:
+        try:
+            ser.reset_input_buffer()
+        except AttributeError:
+            try:
+                ser.flushInput()
+            except:
+                pass
+    return lidar
 
 def do_on(port, baud):
     lidar = None
@@ -132,57 +146,84 @@ def live_scan_and_plot(lidar, ax, stop_event,
                        panels_x=PANELS_X, panels_y=PANELS_Y,
                        panel_size=PANEL_SIZE_M, panel_pixels=PANEL_PIXELS,
                        buffer_max=POINT_BUFFER,
-                       pause_s=0.02):
+                       pause_s=0.02,
+                       point_ttl_s=1.0):
     """
     Mostrar puntos en tiempo real usando la conexión 'lidar' ya abierta.
-    - stop_event: threading.Event usado para terminar el escaneo (cerrar ventana o Ctrl+C).
+    Maneja errores de paquete ("Wrong body size") re-sincronizando el puerto.
     """
     span_x = panels_x * panel_size
     span_y = panels_y * panel_size
     half_x = span_x / 2.0
     half_y = span_y / 2.0
 
-    points = deque(maxlen=buffer_max)  # almacena (x,y)
+    points = deque(maxlen=buffer_max)  # almacena (t, x, y)
     scatter = ax.scatter([], [], s=2, c='red', linewidths=0)
 
     try:
-        # iter_scans es un generador bloqueante que entrega escaneos completos
-        for scan in lidar.iter_scans():
-            if stop_event.is_set():
-                break
-            for (_, angle_deg, dist_mm) in scan:
-                if stop_event.is_set():
-                    break
-                if dist_mm == 0:
+        while not stop_event.is_set():
+            try:
+                for scan in lidar.iter_scans():
+                    if stop_event.is_set():
+                        break
+                    now = time.monotonic()
+                    for (_, angle_deg, dist_mm) in scan:
+                        if stop_event.is_set():
+                            break
+                        if dist_mm == 0:
+                            continue
+                        r = dist_mm / 1000.0  # metros
+                        theta = math.radians(angle_deg)
+                        x = r * math.cos(theta)
+                        y = r * math.sin(theta)
+                        if -half_x <= x <= half_x and -half_y <= y <= half_y:
+                            points.append((now, x, y))
+
+                    # purgar por TTL
+                    cutoff = now - point_ttl_s
+                    while points and points[0][0] < cutoff:
+                        points.popleft()
+
+                    if points:
+                        arr = np.asarray([(px, py) for (_, px, py) in points])
+                        scatter.set_offsets(arr)
+                    else:
+                        scatter.set_offsets(np.empty((0, 2)))
+
+                    try:
+                        ax.figure.canvas.draw_idle()
+                    except Exception:
+                        pass
+                    plt.pause(pause_s)
+
+                # si iter_scans terminó normalmente, hacer una pequeña espera antes de reintentar
+                time.sleep(0.01)
+
+            except RPLidarException as e:
+                msg = str(e)
+                # si es el error de sincronización, limpiar buffer y reintentar
+                if 'Wrong body size' in msg or 'wrong body size' in msg.lower():
+                    ser = getattr(lidar, '_serial', None)
+                    if ser is not None:
+                        try:
+                            ser.reset_input_buffer()
+                        except AttributeError:
+                            try:
+                                ser.flushInput()
+                            except:
+                                pass
+                    # pequeña pausa para que el dispositivo vuelva a estado estable
+                    time.sleep(0.05)
                     continue
-                r = dist_mm / 1000.0  # metros
-                theta = math.radians(angle_deg)
-                x = r * math.cos(theta)
-                y = r * math.sin(theta)
-                # filtrar por área de paneles
-                if -half_x <= x <= half_x and -half_y <= y <= half_y:
-                    points.append((x, y))
+                else:
+                    # otros errores los informamos y salimos del bucle
+                    print("RPLidarException en live scan:", e)
+                    stop_event.set()
+                    break
 
-            # actualizar gráfico
-            if len(points) > 0:
-                arr = np.asarray(points)
-                scatter.set_offsets(arr)
-                try:
-                    ax.figure.canvas.draw_idle()
-                except Exception:
-                    pass
-            # permite procesar eventos de GUI (incluye close_event)
-            plt.pause(pause_s)
-
-            if stop_event.is_set():
-                break
-    except RPLidarException as e:
-        print("Error en live scan:", e)
     except KeyboardInterrupt:
-        # Ctrl+C desde terminal
         stop_event.set()
     finally:
-        # asegurar parada y desconexión
         try:
             lidar.stop()
         except:
